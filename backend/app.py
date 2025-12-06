@@ -15,9 +15,10 @@ def home():
     return '<h2>Splitwise Backend Running! Use /add_expense (POST) and /settle (GET).</h2>'
 
 class Expense:
-    def __init__(self, name: str, amount: float):
+    def __init__(self, name: str, amount: float, desc: str = None):
         self.name = name
         self.amount = amount
+        self.desc = desc
 
 class ExpenseRepository:
     def __init__(self, db_path):
@@ -30,7 +31,8 @@ class ExpenseRepository:
         c.execute('''CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            amount REAL NOT NULL
+            amount REAL NOT NULL,
+            desc TEXT
         )''')
         conn.commit()
         conn.close()
@@ -38,17 +40,25 @@ class ExpenseRepository:
     def add_expense(self, expense: Expense):
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
-        c.execute('INSERT INTO expenses (name, amount) VALUES (?, ?)', (expense.name, expense.amount))
+        c.execute('INSERT INTO expenses (name, amount, desc) VALUES (?, ?, ?)', (expense.name, expense.amount, expense.desc))
         conn.commit()
         conn.close()
 
     def get_expenses(self):
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
-        c.execute('SELECT name, amount FROM expenses')
+        c.execute('SELECT name, amount, desc FROM expenses')
         rows = c.fetchall()
         conn.close()
-        return [Expense(name, amount) for name, amount in rows]
+        # Aggregate expenses per friend
+        friend_totals = {}
+        for name, amount, desc in rows:
+            if name in friend_totals:
+                friend_totals[name]['total'] += amount
+                friend_totals[name]['details'].append({'amount': amount, 'desc': desc})
+            else:
+                friend_totals[name] = {'total': amount, 'details': [{'amount': amount, 'desc': desc}]}
+        return [Expense(name, data['total']) for name, data in friend_totals.items()]
 
     def clear_expenses(self):
         conn = sqlite3.connect(self.db_path)
@@ -98,7 +108,7 @@ expense_repo = ExpenseRepository(DB_PATH)
 @app.route('/add_expense', methods=['POST'])
 def add_expense():
     data = request.json
-    expense = Expense(data['name'], float(data['amount']))
+    expense = Expense(data['name'], float(data['amount']), data.get('desc'))
     expense_repo.add_expense(expense)
     return jsonify({'status': 'success'})
 
