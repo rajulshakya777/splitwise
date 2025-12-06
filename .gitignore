@@ -1,5 +1,3 @@
-# Ignore Python virtual environment
-venv/
 
 # Ignore node_modules in frontend
 frontend/node_modules/
